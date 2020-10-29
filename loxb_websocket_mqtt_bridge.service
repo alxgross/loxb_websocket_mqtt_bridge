@@ -1,0 +1,18 @@
+# Service Definition
+# Thanks to https://github.com/torfsen/python-systemd-tutorial
+
+[Unit]
+Description=Loxberry Websocket-MQTT-Bridge
+
+[Service]
+# Command to execute when the service is started
+ExecStart=/usr/bin/python path/to/your/python_demo_service.py
+
+# Change behaviour of print()
+Environment=PYTHONUNBUFFERED=1
+
+# Restart after failing
+#Restart=on-failure
+
+# Set the execution user
+#User=python_demo_service
