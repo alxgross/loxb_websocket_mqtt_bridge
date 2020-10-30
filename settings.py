@@ -27,13 +27,22 @@ from dotenv import load_dotenv, find_dotenv   #install package python-dotenv
 import os        #to access environment variables in .env
 
 class Env:
-    prefix = None
-    defaults = {}
+    """
+    Instance Attributes:
+        prefix, e.g. LOX_
+        defaults, dict with default values if nothing is in env
+    """
+    #class attributes to track env-loading
+    loaded = False
+    
     
     # Provide a prefix to be used, else ""
     def __init__(self, prefix):
-        load_dotenv(find_dotenv())
+        if not Env.loaded:
+            load_dotenv(find_dotenv())
+            loaded = True
         self.prefix = prefix
+        self.defaults = {}
     
     def setDefaults(self, new_defaults: dict):
         self.defaults = new_defaults
@@ -44,10 +53,10 @@ class Env:
         if env_found:
             return env_found
         else:
-            if self.defaults[name]:
+            if bool(self.defaults) :
                 return self.defaults[name]
             else:
-                return "nothing"
+                raise ValueError("Nothing set in neither .env nor defaults dict")
         
 
 
