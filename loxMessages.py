@@ -93,12 +93,12 @@ class LoxValueState(LoxState):
         #Decode Value
         bitstream = ConstBitStream(valueStateMsg[16:24])
         value_list = bitstream.unpack('floatle:64')
-        self.value = "{:g}".format(value_list[0])
+        self.value = str("{:g}".format(value_list[0]))
         
            
         
     @classmethod #cls is a "keyword" for the class itself. Hence, parseTable is not bound to an instance  
-    def parseTable(cls, eventTable: bytes) -> dict:
+    async def parseTable(cls, eventTable: bytes) -> dict:
         # take a longer message and split it and create ValueState-Instances
         # Return a dict with UUIDs and values
         instances = list()
@@ -107,7 +107,7 @@ class LoxValueState(LoxState):
             instances.append( cls(eventTable[i:i+24]) ) # cls() creates an instance of the class itself
             
         values = dict()
-        for inst in instances:
+        async for inst in instances:
             values[inst.uuid] = inst.value
             
         return values

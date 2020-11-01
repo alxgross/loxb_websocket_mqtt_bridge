@@ -8,7 +8,10 @@
 #LOX_PASSWORD = "passwordxyz"
 #LOX_IP = "192.168.1.1"
 #LOX_PORT = "80"
-#
+#LOX_CLIENT_UUID = "093302e1-02b4-603c-ffa4ege000d80cfd"
+
+#MQTT_BROKER_HOST = "test.mosquitto.org"
+#MQTT_BROKER_PORT = "1883"
 # OR Fill your own values in the script and pass as dict struct
 # 
 myConfig = {

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from gmqtt import Client as MQTTClient #https://github.com/wialon/gmqtt
 
 class LoxBerry:
@@ -12,14 +13,15 @@ class LoxBerry:
     #class attribute
 
     def on_subscribe(self, client, mid, qos, properties):
-        print("Subscription setup")
+        logging.info('Subscribed: {} '.format(client._client_id))
         
         
     def on_message(self, client, topic, payload, qos, properties):
-        print("message received")
-        
+        logging.info('RECV MSG: {} {}'.format(topic, payload))
+
+
     def on_connect(self, client, flags, rc, properties):
-        print('[CONNECTED {}]'.format(client._client_id))
+        logging.info('[CONNECTED {}]'.format(client._client_id))
     
 ### Instance Methods
     async def connect(self):
@@ -33,16 +35,15 @@ class LoxBerry:
     async def MQTTsender(self, queue: asyncio.Queue):
         while True:
             msg = await queue.get()     #get Message to publish from Queue
-            ret = self.mqtt_client.publish('ALXTEST/A', msg.value)  
-            print("MQTT sender: ", msg.appliance, msg.value, ret)
-            await asyncio.sleep(2)
+            #msg.appliance msg.value
+            self.mqtt_client.publish(msg.appliance, msg.value)  
             
     
     
     # Subscribes to a topic and then fills a given queue with messages
     async def MQTTreceiver(self, queue: asyncio.Queue):
-        self.mqtt_client.subscribe('ALXTEST/A')
-        print("Subscribed")
+        self.mqtt_client.subscribe('ALX/#')
+        logging.info("Subscribed to Topic")
         
     
     # Constructor
@@ -52,9 +53,9 @@ class LoxBerry:
         self.mqtt_client = MQTTClient(self.client_id)       #create client object
         
         # Assign callback functions
-        self.on_subscribe = self.on_subscribe
-        self.on_message = self.on_message
-        self.on_connect = self.on_connect
+        self.mqtt_client.on_subscribe = self.on_subscribe
+        self.mqtt_client.on_message = self.on_message
+        self.mqtt_client.on_connect = self.on_connect
         
         
         

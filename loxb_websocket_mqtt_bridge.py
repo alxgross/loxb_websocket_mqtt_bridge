@@ -3,41 +3,74 @@
 # Author: Alx G
 # Licence: Apache 2.0
 import asyncio
-#import signal
+import signal
+import logging
+
 from settings import Env
 from LoxMiniserver import LoxMiniserver
 from LoxBerry import LoxBerry
 
+# Get the config 
 env_lox = Env("LOX_")
 env_lb = Env("MQTT_")
 
-def ask_exit(*args):
-    STOP.set()
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s,%(msecs)d %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 
-if __name__ == '__main__':
-    myLox = LoxMiniserver(env_lox.ip, env_lox.port, env_lox.user, env_lox.password)
+async def shutdown(signal, loop):
+    """Cleanup tasks tied to the service's shutdown."""
+    logging.info(f"Received exit signal {signal.name}...")
+    tasks = [t for t in asyncio.all_tasks() if t is not
+             asyncio.current_task()]
+
+    [task.cancel() for task in tasks]
+
+    logging.info(f"Cancelling {len(tasks)} outstanding tasks")
+    await asyncio.gather(*tasks, return_exceptions=True)
+    loop.stop()
+    
+
+def main():
+    myLox = LoxMiniserver(env_lox.ip, env_lox.port, env_lox.user, env_lox.password, env_lox.client_uuid)
     loxBerry = LoxBerry(env_lb.broker_host, env_lb.broker_port, "alx_sender1")
     loxBerry_listen = LoxBerry(env_lb.broker_host, env_lb.broker_port, "alx_listener1")
     msgQ_lox2lb = asyncio.Queue() # Creates a FIFO queue for messages
     msgQ_lb2lox = asyncio.Queue() # Creates a FIFO queue for messages
 
-    STOP = asyncio.Event()
 
     loop = asyncio.get_event_loop()
-    
-#     loop.add_signal_handler(signal.SIGINT, ask_exit)
-#     loop.add_signal_handler(signal.SIGTERM, ask_exit)
-    
-    loop.run_until_complete(myLox.connect()) # Connect to Miniserver via Websockets
-    loop.run_until_complete(loxBerry.connect())
-    loop.run_until_complete(loxBerry_listen.connect())
 
-    # Start listener and heartbeat 
-    tasks = [
-        asyncio.ensure_future(myLox.receiver(msgQ_lox2lb)), # Start the receiver for Loxone messages
-        asyncio.ensure_future(loxBerry.MQTTsender(msgQ_lox2lb)), # Start the MQTT sender
-        asyncio.ensure_future(loxBerry_listen.MQTTreceiver(msgQ_lb2lox))
-    ]
+    #Preparing to gracefully exit
+    # May want to catch other signals too
+    signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
+    for s in signals:
+        loop.add_signal_handler(
+            s, lambda s=s: asyncio.create_task(shutdown(s, loop)))
+    try:
+        loop.run_until_complete(loxBerry.connect())
+        loop.run_until_complete(loxBerry_listen.connect())
 
-    loop.run_until_complete(asyncio.wait(tasks))
+#         # Start listener and heartbeat 
+#         tasks = [
+#             asyncio.ensure_future(myLox.receiver(msgQ_lox2lb)), # Start the receiver for Loxone messages
+#             asyncio.ensure_future(loxBerry.MQTTsender(msgQ_lox2lb)), # Start the MQTT sender
+#             asyncio.ensure_future(loxBerry_listen.MQTTreceiver(msgQ_lb2lox))
+#         ]
 
+   #     loop.run_until_complete(asyncio.wait(tasks))
+        loop.create_task(myLox.receiver(msgQ_lox2lb)) # Startup websocket connection and listen
+        loop.create_task(loxBerry.MQTTsender(msgQ_lox2lb))
+        loop.create_task(loxBerry_listen.MQTTreceiver(msgQ_lb2lox))
+        loop.run_forever()
+
+    finally:
+        loop.close()
+        logging.info("Successfully shutdown the Loxone-Loxberry-Bridge service.")
+
+
+if __name__ == '__main__':
+    main()
