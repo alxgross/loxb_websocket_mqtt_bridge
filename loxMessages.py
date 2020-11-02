@@ -84,6 +84,9 @@ class LoxValueState(LoxState):
     def __init__(self, valueStateMsg: bytes):
         #for BitStream: https://bitstring.readthedocs.io/en/latest/constbitstream.html?highlight=read#bitstring.ConstBitStream.read
         
+        if len(valueStateMsg) != 24:
+            raise ValueError("Wrong message length for a ValueState Message")
+        
         self.value = 0  #Value as Float
         
         LoxState.__init__(self)
@@ -101,13 +104,14 @@ class LoxValueState(LoxState):
     async def parseTable(cls, eventTable: bytes) -> dict:
         # take a longer message and split it and create ValueState-Instances
         # Return a dict with UUIDs and values
-        instances = list()
+        LoxValueState.instances = list()
 
         for i in range(0, len(eventTable), 24):
-            instances.append( cls(eventTable[i:i+24]) ) # cls() creates an instance of the class itself
+            LoxValueState.instances.append( cls(eventTable[i:i+24]) ) # cls() creates an instance of the class itself
             
+        # Produce a dict
         values = dict()
-        async for inst in instances:
+        for inst in LoxValueState.instances:
             values[inst.uuid] = inst.value
             
         return values

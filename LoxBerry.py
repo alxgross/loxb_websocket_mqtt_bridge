@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from gmqtt import Client as MQTTClient #https://github.com/wialon/gmqtt
+from QMessage import QMessage #our interchange format
 
 class LoxBerry:
     """ Class representing the LoxBerry - attached via MQTT 
@@ -8,7 +9,9 @@ class LoxBerry:
     Instance Attributes:
         broker_host
         broker_port
-        mqtt_client 
+        mqtt_client
+        
+        receiverQ Queue for messages received on subscribed topics
     """
     #class attribute
 
@@ -16,8 +19,9 @@ class LoxBerry:
         logging.info('Subscribed: {} '.format(client._client_id))
         
         
-    def on_message(self, client, topic, payload, qos, properties):
+    async def on_message(self, client, topic, payload, qos, properties):
         logging.info('RECV MSG: {} {}'.format(topic, payload))
+        await self.receiverQ.put(QMessage(topic, payload))
 
 
     def on_connect(self, client, flags, rc, properties):
@@ -42,15 +46,18 @@ class LoxBerry:
     
     # Subscribes to a topic and then fills a given queue with messages
     async def MQTTreceiver(self, queue: asyncio.Queue):
-        self.mqtt_client.subscribe('ALX/#')
+        self.mqtt_client.subscribe('ALX/Command/#')
         logging.info("Subscribed to Topic")
+        self.receiverQ = queue
+        
+        
         
     
     # Constructor
     def __init__(self, host, port, client_id):
         self.broker_host, self.broker_port = host, port
         self.client_id = client_id
-        self.mqtt_client = MQTTClient(self.client_id)       #create client object
+        self.mqtt_client = MQTTClient(self.client_id, session_expiry_interval=60)       #create client object
         
         # Assign callback functions
         self.mqtt_client.on_subscribe = self.on_subscribe

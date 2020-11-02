@@ -44,13 +44,21 @@ class LoxMiniserver:
     def prepareRsaKey(self):
         try:
             response = requests.get("http://{}:{}/jdev/sys/getPublicKey".format(self.ip, self.port))
+            response.raise_for_status()
+        except ConnectionError as exc: #https://docs.python.org/3/library/exceptions.html#exception-hierarchy
+            logging.error("Some issue with your network. Probably not possible to reach Miniserver.")
+            logging.error(exc) #prints exception infos   
+        except:
+            logging.error("Could not get RSA public key via /jdev/sys/getPublicKey for some unknown reason.")
+            raise
+            
+        else:
             rsa_key_malformed = response.json()["LL"]["value"]
             #fix the malformed public key
             rsa_key_malformed = rsa_key_malformed.replace("-----BEGIN CERTIFICATE-----", "-----BEGIN PUBLIC KEY-----\n")
             self.rsa_pub_key = rsa_key_malformed.replace("-----END CERTIFICATE-----", "\n-----END PUBLIC KEY-----")
             logging.info("RSA Public Key set for Instance: {}".format(self.rsa_pub_key))
-        except:
-            logging.error("Could not get RSA public key via /jdev/sys/getPublicKey")
+
     
     
     #get Sha1 Key and Salt
@@ -166,9 +174,11 @@ class LoxMiniserver:
 
     
     # Connect and setup websocket
-    async def receiver(self, queue: asyncio.Queue):
+    async def plugWebsocket(self, qOut: asyncio.Queue, qIn: asyncio.Queue):
+            """ qOut: Messages will be put here
+                qIn: Messages coming will be taken care of here """
             
-#         try:
+#         try: #TO BE imporoved: error handling
             #start websocket connection (page 7, step 3 - protocol does not need to be specified apparently)
             async with websockets.connect("ws://{}:{}/ws/rfc6455".format(self.ip, self.port)) as myWs:
                 
@@ -213,10 +223,31 @@ class LoxMiniserver:
    
                             
                 #Enable State update and start receiving
-                await myWs.send("jdev/sps/enablebinstatusupdate")
-
+                qMsgSetStatus = QMessage("blank", "blank")
+                await qMsgSetStatus.setLoxCommand("jdev/sps/enablebinstatusupdate")
+                await qIn.put(qMsgSetStatus)
+                
+                
                 #Receive Messages from Miniserver
                 while True:
+                    
+                    #Check incoming queue for anything to send
+                    if not qIn.empty():
+                        qMsg = await qIn.get()
+                        await myWs.send(qMsg.loxCommand) # Send the command to miniserver
+                        #Receive and Process header
+                        header = loxMessages.LoxHeader(await myWs.recv())
+                        if header.exact2Follow == True:
+                            header = loxMessages.LoxHeader(await myWs.recv())
+                        #Receive the message
+                        answer = await myWs.recv()
+                        if header.msg_type == "text":
+                            if json.loads(answer)["LL"]["Code"] == "200":
+                                logging.info("Statusupdates enabled successfully")
+                        else:
+                            logging.error("Issue with Enabling Statusupdate")
+                            
+                    #Wait for messages to come
                     
                     #Process header
                     header = loxMessages.LoxHeader(await myWs.recv())
@@ -226,32 +257,21 @@ class LoxMiniserver:
                     #Process Message/Decode it
                     if header.msg_type == 'value':
                         message = await myWs.recv()
-                        #KAPUTT statesDict = await loxMessages.LoxValueState.parseTable(message)
+                        await loxMessages.LoxValueState.parseTable(message)
                     
-                        #HIER fehlt ein async for über alle messages
-                        valueState = loxMessages.LoxValueState(message)
-                        logging.info("UUID: {} Value: {}".format(valueState.uuid, valueState.value))
+                        for valueState in loxMessages.LoxValueState.instances:
+                            logging.info("UUID: {} Value: {}".format(valueState.uuid, valueState.value))
+                            
+                            #Put it on queue to be sent to MQTT
+                            await qOut.put(QMessage("ALX/{}".format(valueState.uuid), valueState.value)) #Put the Message on the Queue
+
                         
-                        #Translate --> to be implemented
                     
                 
-                        #Put it on queue to be sent to MQTT
-                        await queue.put(QMessage("ALX/{}".format(valueState.uuid), valueState.value)) #Put the Message on the Queue
                     else:
                         logging.info("Unknown Miniserver Message received: {}".format(await myWs.recv()))
             
             
-    
-    
-    # Send Messages to Miniserver
-    async def sender(self, queue: asyncio.Queue):
-        # take message from queue
-        
-        # translate to Lox-Message
-        
-        # send to Loxone Miniserver
-        
-        pass
     
     
     #Constructor
@@ -264,6 +284,8 @@ class LoxMiniserver:
         
         self.client_id =  "loxb_websocket_mqtt_bridge_by_alx_g"
         self.permission = "4" #2 for short period, 4 for long period
+        
+        self.commandQ = asyncio.Queue()
         
         self.prepareRsaKey()
         self.getSha1KeySalt()

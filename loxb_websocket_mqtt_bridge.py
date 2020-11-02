@@ -62,7 +62,7 @@ def main():
 #         ]
 
    #     loop.run_until_complete(asyncio.wait(tasks))
-        loop.create_task(myLox.receiver(msgQ_lox2lb)) # Startup websocket connection and listen
+        loop.create_task(myLox.plugWebsocket(msgQ_lox2lb, msgQ_lb2lox)) # Startup websocket connection and listen
         loop.create_task(loxBerry.MQTTsender(msgQ_lox2lb))
         loop.create_task(loxBerry_listen.MQTTreceiver(msgQ_lb2lox))
         loop.run_forever()
