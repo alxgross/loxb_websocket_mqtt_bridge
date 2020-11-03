@@ -10,3 +10,20 @@ OR start it as a service (look here: https://github.com/torfsen/python-systemd-t
 
 ## Make me Happy
 Let me know if you like what you see and PLEASE, PLEASE don't hesitate if you see ugly code or errors to create a PULL-request
+
+
+## MQTT Conventions
+
+Bridge will publish on /miniservers/<miniserver_name>/<room>/<category>/<device name>/<UUID>
+
+It subscribes on:
+    /miniservers/.../command
+    /miniservers/.../announce -> will trigger an announce-message with details from the structure-file
+    /miniservers/.../update -> will trigger bridge to get current state of appliance via rest-api and publish to mqtt
+    
+    
+## Dependencies
+    Packages necessary to be installed
+    aiofile
+    requests
+    

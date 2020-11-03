@@ -2,7 +2,8 @@
 # Collection of Classes to handle the messages coming from the miniserver
 # Author: Alx G
 # Licence: Apache 2.0
-
+import logging
+from aiofile import AIOFile 
 from bitstring import ConstBitStream #install bistring --> necessary to deal with Bit-Messages
 
 
@@ -33,12 +34,12 @@ class LoxHeader:
         switch_dict = {
             b'\x00': 'text', #"Text-Message"
             b'\x01': 'bin', #"Binary File"
-            b'\x02': 'value', #"Event-Table of Value-States
-            b'\x03': 'text', # Event-Table of Text-States
-            b'\x04': 'daytimer', #Event-Table of Daytimer-States
+            b'\x02': 'valueStateTab', #"Event-Table of Value-States
+            b'\x03': 'textStateTab', # Event-Table of Text-States
+            b'\x04': 'daytimerTab', #Event-Table of Daytimer-States
             b'\x05': 'out-of-service', #e.g. Firmware-Upgrade - no following message at all. Connection closes
             b'\x06': 'still_alive', #response to keepalive-message
-            b'\x07': 'weather' # Event-Table of Wheather-States
+            b'\x07': 'weatherTab' # Event-Table of Wheather-States
             }
         return switch_dict.get(secondByte, "invalid")
     
@@ -55,10 +56,18 @@ class LoxState:
     
     @staticmethod
     def decodeUUID(uuid: bytes) -> str:
-
+        #     Binary-Structure of a UUID
+        # typedef struct _UUID {
+        #  unsigned long Data1; // 32-Bit Unsigned Integer (little endian)
+        #  unsigned short Data2; // 16-Bit Unsigned Integer (little endian)
+        #  unsigned short Data3; // 16-Bit Unsigned Integer (little endian)
+        #  unsigned char Data4[8]; // 8-Bit Uint8Array [8] (little endian)
+        #Example from the structure-file in json however:
+        # UUID: "12c3abc1-024e-1135-ffff7ba5fa36c093","name":"Gästezimmer UG Süd"
+        # The strings are the hex representations of the numbers
         #Decode UUID
         bitstream = ConstBitStream(uuid)
-        data1, data2, data3, data41, data42, data43, data44, data45, data46, data47, data48 = bitstream.unpack('uint:32, uint:16, uint:16, uint:8, uint:8, uint:8, uint:8, uint:8, uint:8, uint:8, uint:8')
+        data1, data2, data3, data41, data42, data43, data44, data45, data46, data47, data48 = bitstream.unpack('uintle:32, uintle:16, uintle:16, uintle:8, uintle:8, uintle:8, uintle:8, uintle:8, uintle:8, uintle:8, uintle:8')
         uuid = "{:x}-{:x}-{:x}-{:x}{:x}{:x}{:x}{:x}{:x}{:x}{:x}".format(data1, data2, data3, data41, data42, data43, data44, data45, data46, data47, data48)
         return uuid
    
@@ -71,15 +80,7 @@ class LoxValueState(LoxState):
     #Consists of UUID (16 byte) and Value 64-Bit Float (little endian) value
     # Each State-Entry in the table is consequently 24 byte long
     #
-    #     Binary-Structure of a UUID
-    # typedef struct _UUID {
-    #  unsigned long Data1; // 32-Bit Unsigned Integer (little endian)
-    #  unsigned short Data2; // 16-Bit Unsigned Integer (little endian)
-    #  unsigned short Data3; // 16-Bit Unsigned Integer (little endian)
-    #  unsigned char Data4[8]; // 8-Bit Uint8Array [8] (little endian)
-    #Example from the structure-file in json however:
-    # UUID: "12c3abc1-024e-1135-ffff7ba5fa36c093","name":"Gästezimmer UG Süd"
-    # The strings are the hex representations of the numbers
+
     
     def __init__(self, valueStateMsg: bytes):
         #for BitStream: https://bitstring.readthedocs.io/en/latest/constbitstream.html?highlight=read#bitstring.ConstBitStream.read
@@ -105,6 +106,9 @@ class LoxValueState(LoxState):
         # take a longer message and split it and create ValueState-Instances
         # Return a dict with UUIDs and values
         LoxValueState.instances = list()
+        
+        num_Values = len(eventTable) / 24
+        logging.debug("Received {} State-Value-Messages in a table".format(num_Values))
 
         for i in range(0, len(eventTable), 24):
             LoxValueState.instances.append( cls(eventTable[i:i+24]) ) # cls() creates an instance of the class itself
@@ -115,6 +119,7 @@ class LoxValueState(LoxState):
             values[inst.uuid] = inst.value
             
         return values
+    
     
 # Text State - derived from LoxState
 class LoxTextState(LoxState):
@@ -128,14 +133,52 @@ class LoxTextState(LoxState):
     # } ​PACKED​ ​EvDataText​;
     
     def __init__(self, message):
-        LoxState.__init__()
+        LoxState.__init__(self)
         
-        # extract UUID
-        self.setUUID(self, message[0:16])
+        self.msgLength: int = self.decode(message)
+       
+        
+    def decode(self, message) -> int:
+        # return length of the message decoded
+        
+         # extract UUID
+        self.setUUID(message[0:16])
         
         # extract icon UUID
         self.uuid_icon = LoxState.decodeUUID(message[16:32])
         
         # calculate Text length
+        bitstream = ConstBitStream(message[32:36])
+        self.textLength: int = bitstream.read('uintle:32')
         
         # extract Text
+        #text_bits = ConstBitStream(message[36:36+self.textLenght])
+        endPos = 36 + self.textLength
+        self.text: str = message[36:endPos].decode("utf8")
+        
+        return endPos
+        
+    @classmethod #cls is a "keyword" for the class itself. Hence, parseTable is not bound to an instance  
+    async def parseTable(cls, eventTable: bytes) -> None:
+        # take a longer message and split it and create ValueState-Instances
+        LoxTextState.instances = list() #will hold all instances ever... --> NOT GOOD for anything
+        
+        #write to Cache-file for now
+        async with AIOFile("cache/textStates.bin", "w+b") as file:
+            await file.write(eventTable)
+            await file.fsync()
+        
+        totalLength = len(eventTable)
+        pos = 0
+        i = 0
+        while True:
+            textState = cls(eventTable[pos:-1])
+            LoxTextState.instances.append( textState )
+            i += 1
+            pos += textState.msgLength
+            if pos > totalLength:
+                break
+                
+        logging.debug("Received {} State-Text-Messages in a table".format(i))
+
+                                           

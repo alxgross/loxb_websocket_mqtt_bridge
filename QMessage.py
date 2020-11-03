@@ -4,19 +4,30 @@ class QMessage:
     
     Instance Attributes
     
-    Appliance (Sensor/Actuator)
-    Value
+    origin (miniserver, this_bridge or mqtt)
+    appliance: unique identifier
+    value: set after translation
+    
+    mqttTopic (Sensor/Actuator)
+    mqttPayloadd
     
     loxCommand: The Loxone Command
     
     """
     
-    def __init__(self, appliance: str, value: str):
-        self.appliance = appliance
-        self.value = value
+    def __init__(self, origin: str, loxUuid: str = "", loxCommand: str = "", loxValue: str = "", mqttTopic: str = "miniservers", mqttPayload: str = ""):
+        self.origin = origin
+        self.appliance = loxUuid
         
-    async def setLoxCommand(self, command):
-        self.loxCommand = command
+        self.loxCommand = loxCommand
+        #Logic is missing yet
+        if loxValue == False:
+            self.value = mqttPayload
+        else:
+            self.value = loxValue
+        
+        self.mqttTopic = mqttTopic
+        self.mqttPayload = mqttPayload
         
     #Steps to be done
         #identify what value type it is

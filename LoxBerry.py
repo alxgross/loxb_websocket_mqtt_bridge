@@ -21,7 +21,7 @@ class LoxBerry:
         
     async def on_message(self, client, topic, payload, qos, properties):
         logging.info('RECV MSG: {} {}'.format(topic, payload))
-        await self.receiverQ.put(QMessage(topic, payload))
+        await self.receiverQ.put(QMessage(mqttTopic = topic, mqttPayload = payload))
 
 
     def on_connect(self, client, flags, rc, properties):
@@ -46,7 +46,7 @@ class LoxBerry:
     
     # Subscribes to a topic and then fills a given queue with messages
     async def MQTTreceiver(self, queue: asyncio.Queue):
-        self.mqtt_client.subscribe('ALX/Command/#')
+        self.mqtt_client.subscribe('miniservers/{}/#'.format(self.miniserver))
         logging.info("Subscribed to Topic")
         self.receiverQ = queue
         
@@ -54,9 +54,10 @@ class LoxBerry:
         
     
     # Constructor
-    def __init__(self, host, port, client_id):
+    def __init__(self, host, port, client_id, miniserver: str):
         self.broker_host, self.broker_port = host, port
         self.client_id = client_id
+        self.miniserver = miniserver
         self.mqtt_client = MQTTClient(self.client_id, session_expiry_interval=60)       #create client object
         
         # Assign callback functions

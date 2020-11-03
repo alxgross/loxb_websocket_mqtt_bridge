@@ -223,8 +223,7 @@ class LoxMiniserver:
    
                             
                 #Enable State update and start receiving
-                qMsgSetStatus = QMessage("blank", "blank")
-                await qMsgSetStatus.setLoxCommand("jdev/sps/enablebinstatusupdate")
+                qMsgSetStatus = QMessage("this_bridge", loxCommand = "jdev/sps/enablebinstatusupdate")
                 await qIn.put(qMsgSetStatus)
                 
                 
@@ -255,7 +254,7 @@ class LoxMiniserver:
                         header = loxMessages.LoxHeader(await myWs.recv())
 
                     #Process Message/Decode it
-                    if header.msg_type == 'value':
+                    if header.msg_type == 'valueStateTab':
                         message = await myWs.recv()
                         await loxMessages.LoxValueState.parseTable(message)
                     
@@ -263,9 +262,16 @@ class LoxMiniserver:
                             logging.info("UUID: {} Value: {}".format(valueState.uuid, valueState.value))
                             
                             #Put it on queue to be sent to MQTT
-                            await qOut.put(QMessage("ALX/{}".format(valueState.uuid), valueState.value)) #Put the Message on the Queue
+                            await qOut.put(QMessage("miniserver", loxUuid = valueState.uuid, loxValue = valueState.value)) #Put the Message on the Queue
 
-                        
+                    elif header.msg_type == 'textStateTab':
+                        await loxMessages.LoxTextState.parseTable(await myWs.recv())
+                        for textState in loxMessages.LoxTextState.instances:
+                            logging.info("UUID: {}, UUID icon: {}, TextLength: {}, Text: {}".format(textState.uuid, textState.uuid_icon, textState.textLength, textState.text))
+                            
+                    elif header.msg_type == 'text':
+                        message = await myWs.recv()
+                        logging.info("Textmessage received: {}".format(message))
                     
                 
                     else:

@@ -16,7 +16,7 @@ env_lb = Env("MQTT_")
 
 # Setup logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s,%(msecs)d %(levelname)s: %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -36,8 +36,8 @@ async def shutdown(signal, loop):
 
 def main():
     myLox = LoxMiniserver(env_lox.ip, env_lox.port, env_lox.user, env_lox.password, env_lox.client_uuid)
-    loxBerry = LoxBerry(env_lb.broker_host, env_lb.broker_port, "alx_sender1")
-    loxBerry_listen = LoxBerry(env_lb.broker_host, env_lb.broker_port, "alx_listener1")
+    loxBerry = LoxBerry(env_lb.broker_host, env_lb.broker_port, client_id = "alx_sender1", miniserver = env_lox.miniserver_name)
+    loxBerry_listen = LoxBerry(env_lb.broker_host, env_lb.broker_port, "alx_listener1", miniserver = env_lox.miniserver_name)
     msgQ_lox2lb = asyncio.Queue() # Creates a FIFO queue for messages
     msgQ_lb2lox = asyncio.Queue() # Creates a FIFO queue for messages
 
