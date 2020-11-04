@@ -56,7 +56,7 @@ class LoxState:
     
     @staticmethod
     def decodeUUID(uuid: bytes) -> str:
-        #     Binary-Structure of a UUID
+        #     Binary-Structure of a UUID 16Byte
         # typedef struct _UUID {
         #  unsigned long Data1; // 32-Bit Unsigned Integer (little endian)
         #  unsigned short Data2; // 16-Bit Unsigned Integer (little endian)
@@ -64,11 +64,11 @@ class LoxState:
         #  unsigned char Data4[8]; // 8-Bit Uint8Array [8] (little endian)
         #Example from the structure-file in json however:
         # UUID: "12c3abc1-024e-1135-ffff7ba5fa36c093","name":"Gästezimmer UG Süd"
-        # The strings are the hex representations of the numbers
+        # The strings are the hex representations of the numbers! in lowercase!
         #Decode UUID
         bitstream = ConstBitStream(uuid)
         data1, data2, data3, data41, data42, data43, data44, data45, data46, data47, data48 = bitstream.unpack('uintle:32, uintle:16, uintle:16, uintle:8, uintle:8, uintle:8, uintle:8, uintle:8, uintle:8, uintle:8, uintle:8')
-        uuid = "{:x}-{:x}-{:x}-{:x}{:x}{:x}{:x}{:x}{:x}{:x}{:x}".format(data1, data2, data3, data41, data42, data43, data44, data45, data46, data47, data48)
+        uuid = "{:08x}-{:04x}-{:04x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}".format(data1, data2, data3, data41, data42, data43, data44, data45, data46, data47, data48)
         return uuid
    
     def setUUID(self, uuid: bytes):
@@ -102,28 +102,24 @@ class LoxValueState(LoxState):
            
         
     @classmethod #cls is a "keyword" for the class itself. Hence, parseTable is not bound to an instance  
-    async def parseTable(cls, eventTable: bytes) -> dict:
+    async def parseTable(cls, eventTable: bytes) -> list:
         # take a longer message and split it and create ValueState-Instances
         # Return a dict with UUIDs and values
-        LoxValueState.instances = list()
+        instances = list()
         
         num_Values = len(eventTable) / 24
         logging.debug("Received {} State-Value-Messages in a table".format(num_Values))
 
         for i in range(0, len(eventTable), 24):
-            LoxValueState.instances.append( cls(eventTable[i:i+24]) ) # cls() creates an instance of the class itself
+            instances.append( cls(eventTable[i:i+24]) ) # cls() creates an instance of the class itself
             
-        # Produce a dict
-        values = dict()
-        for inst in LoxValueState.instances:
-            values[inst.uuid] = inst.value
-            
-        return values
+        return instances
     
     
 # Text State - derived from LoxState
 class LoxTextState(LoxState):
-    #instance variables: uuid, uuid_icon, text
+    #instance variables: uuid, uuid_icon, textLength and text
+    
     #page 17/16 in Loxone Guide
     #typedef​ ​struct​ { ​// starts at multiple of 4
     #   PUUID​ ​uuid​; // 128-Bit uuid
@@ -140,7 +136,12 @@ class LoxTextState(LoxState):
         
     def decode(self, message) -> int:
         # return length of the message decoded
+        logging.debug("Message length: {}, Message: {}".format(len(message), message))
         
+        while len(message) < 36:
+            logging.warning("Message too short: {} bytes actually, padding out with 0x00".format(len(message)))
+            message += b"\x00"
+            
          # extract UUID
         self.setUUID(message[0:16])
         
@@ -152,33 +153,45 @@ class LoxTextState(LoxState):
         self.textLength: int = bitstream.read('uintle:32')
         
         # extract Text
-        #text_bits = ConstBitStream(message[36:36+self.textLenght])
         endPos = 36 + self.textLength
+        
         self.text: str = message[36:endPos].decode("utf8")
+       
+        #return correct endPos after adding padding-bytes implicitly added            
+        if self.textLength % 4 > 0:
+            padding = 4 - self.textLength % 4 #padding bytes used when text length is not a multiple of 4
+        else:
+            padding = 0
+        endPos += padding
         
         return endPos
         
     @classmethod #cls is a "keyword" for the class itself. Hence, parseTable is not bound to an instance  
-    async def parseTable(cls, eventTable: bytes) -> None:
+    async def parseTable(cls, eventTable: bytes, writeFile = False) -> list:
         # take a longer message and split it and create ValueState-Instances
-        LoxTextState.instances = list() #will hold all instances ever... --> NOT GOOD for anything
+        instances = list() # List of instances created
         
-        #write to Cache-file for now
-        async with AIOFile("cache/textStates.bin", "w+b") as file:
-            await file.write(eventTable)
-            await file.fsync()
+        #write to Debugfile-file for now
+        if writeFile:
+            async with AIOFile(".cache/textStates.bin", "wb") as file:
+                await file.write(eventTable)
+                await file.fsync()
+        
         
         totalLength = len(eventTable)
+        logging.debug("State-Table received. Length: {}".format(totalLength))
         pos = 0
         i = 0
-        while True:
-            textState = cls(eventTable[pos:-1])
-            LoxTextState.instances.append( textState )
+        while pos < totalLength:
+            logging.debug("Processing message part {}".format(i))
+            textState = cls(eventTable[pos:])
+            instances.append( textState )
+            logging.debug("Text State: UUID: {}, UUID-Icon: {}, Text-Length: {}, Text: {}".format( textState.uuid, textState.uuid_icon, textState.textLength, textState.text ))
+            
             i += 1
             pos += textState.msgLength
-            if pos > totalLength:
-                break
                 
         logging.debug("Received {} State-Text-Messages in a table".format(i))
+        return instances
 
                                            

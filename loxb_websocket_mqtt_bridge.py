@@ -16,14 +16,14 @@ env_lb = Env("MQTT_")
 
 # Setup logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.WARNING,
     format="%(asctime)s,%(msecs)d %(levelname)s: %(message)s",
     datefmt="%H:%M:%S",
 )
 
 async def shutdown(signal, loop):
     """Cleanup tasks tied to the service's shutdown."""
-    logging.info(f"Received exit signal {signal.name}...")
+    logging.warning(f"Received exit signal {signal.name}...")
     tasks = [t for t in asyncio.all_tasks() if t is not
              asyncio.current_task()]
 
@@ -46,10 +46,16 @@ def main():
 
     #Preparing to gracefully exit
     # May want to catch other signals too
-    signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
-    for s in signals:
-        loop.add_signal_handler(
-            s, lambda s=s: asyncio.create_task(shutdown(s, loop)))
+    #signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT) - POSIX/LINUX
+    signals = (signal.SIGTERM, signal.SIGINT) # Windows
+    try:
+        for s in signals:
+            loop.add_signal_handler(
+                s, lambda s=s: asyncio.create_task(shutdown(s, loop)))
+    except NotImplementedError:
+        logging.error("No Signalhandler added...")
+        
+        
     try:
         loop.run_until_complete(loxBerry.connect())
         loop.run_until_complete(loxBerry_listen.connect())

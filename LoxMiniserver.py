@@ -4,6 +4,7 @@ import logging
 from QMessage import QMessage #own Class 
 import requests   #lib for GET, POST, PUT etc.
 import websockets
+from aiofile import AIOFile 
 
 #Install pyCryptoDome NOT pyCrypto
 from Crypto.PublicKey import RSA
@@ -38,26 +39,36 @@ class LoxMiniserver:
         
         websocket : after connection been established and token aquired
     """
-    
+
     
     # Get the RSA public key from the miniserver and format it so that it is compliant with a .PEM file 
     def prepareRsaKey(self):
+        
+        #check if Key is in cache
         try:
-            response = requests.get("http://{}:{}/jdev/sys/getPublicKey".format(self.ip, self.port))
-            response.raise_for_status()
-        except ConnectionError as exc: #https://docs.python.org/3/library/exceptions.html#exception-hierarchy
-            logging.error("Some issue with your network. Probably not possible to reach Miniserver.")
-            logging.error(exc) #prints exception infos   
-        except:
-            logging.error("Could not get RSA public key via /jdev/sys/getPublicKey for some unknown reason.")
-            raise
-            
-        else:
-            rsa_key_malformed = response.json()["LL"]["value"]
-            #fix the malformed public key
-            rsa_key_malformed = rsa_key_malformed.replace("-----BEGIN CERTIFICATE-----", "-----BEGIN PUBLIC KEY-----\n")
-            self.rsa_pub_key = rsa_key_malformed.replace("-----END CERTIFICATE-----", "\n-----END PUBLIC KEY-----")
-            logging.info("RSA Public Key set for Instance: {}".format(self.rsa_pub_key))
+            with open('.cache/rsa_pub_key.pem', 'rb') as file:
+                self.rsa_pub_key: str = file.read()
+                logging.info("RSA Public Key read from cache and set for Instance: {}".format(self.rsa_pub_key))
+
+        except FileNotFoundError as exc:
+            logging.debug("No cached RSA Pub Key found ({})".format(exc))
+        
+            try:
+                response = requests.get("http://{}:{}/jdev/sys/getPublicKey".format(self.ip, self.port))
+                response.raise_for_status()
+            except ConnectionError as exc: #https://docs.python.org/3/library/exceptions.html#exception-hierarchy
+                logging.error("Some issue with your network. Probably not possible to reach Miniserver.")
+                logging.error(exc) #prints exception infos   
+            except:
+                logging.error("Could not get RSA public key via /jdev/sys/getPublicKey for some unknown reason.")
+                raise
+                
+            else:
+                rsa_key_malformed = response.json()["LL"]["value"]
+                #fix the malformed public key
+                rsa_key_malformed = rsa_key_malformed.replace("-----BEGIN CERTIFICATE-----", "-----BEGIN PUBLIC KEY-----\n")
+                self.rsa_pub_key = rsa_key_malformed.replace("-----END CERTIFICATE-----", "\n-----END PUBLIC KEY-----")
+                logging.info("RSA Public Key set for Instance: {}".format(self.rsa_pub_key))
 
     
     
@@ -210,16 +221,42 @@ class LoxMiniserver:
                 
                 logging.info("getToken successful")
      
+     
+                #Check on Structure-file
+                try:
+                    #Read the Structure file if available
+                    async with AIOFile(".cache/loxAPP3.json", "r") as file:
+                        structure_file = json.loads(await file.read())
+                    await myWs.send("jdev/sps/LoxAPPversion3")
+                    await myWs.recv() #throw away header (it's text)
+                    structLastMod = json.loads(await myWs.recv())
+                    if structLastMod["LL"]["value"] != structure_file["lastModified"]:
+                        logging.info("Miniserver Struct last modified: {}, cached Structure File: {}".format(structLastMod["LL"]["value"], structure_file["lastModified"]))
+                        raise FileNotFoundError("File found but not uptodate")
+                    else:
+                        logging.info("Cached structure file will be used. Last modified: {}".format(structure_file["lastModified"]))
 
-#                 else:
-#                     logging.info("getToken failed with Code :{}".format(response["LL"]["Code"]))
-                
-#         except:
-#             logging.error("Websocket connection could not be established")
+                except FileNotFoundError as exc:
+                    #Get the structure file from the Miniserver (page 18)
+                    await myWs.send("data/LoxAPP3.json")
+                    logging.debug("Header - expected: {}".format(await myWs.recv())) #get header and discard it
+                    logging.debug("Header - the real one: {}".format(await myWs.recv())) #get header and discard it
+                    message = await myWs.recv()
+                    logging.debug("Structure File: {}".format(message))
+                    structure_file = json.loads(message)
+                    logging.warning(structure_file)
+                    
+                    #Cache the file
+                    try:
+                        async with AIOFile(".cache/loxApp3.json", "w") as file:
+                            await file.write(json.dumps(structure_file, indent=4))
+                            await file.fsync()
+                    except FileNotFoundError as exc:
+                        logging.error("Error with caching the structure file")
+                        raise
+                    
     
-    
-    
-                #Receive Messages from Miniserver and send to Queue as QMessage
+                #Receive Messages from Miniserver and send to Queue as QMessage - indefinitely
    
                             
                 #Enable State update and start receiving
@@ -256,19 +293,22 @@ class LoxMiniserver:
                     #Process Message/Decode it
                     if header.msg_type == 'valueStateTab':
                         message = await myWs.recv()
-                        await loxMessages.LoxValueState.parseTable(message)
+                        valueStates = await loxMessages.LoxValueState.parseTable(message)
                     
-                        for valueState in loxMessages.LoxValueState.instances:
+                        for valueState in valueStates:
                             logging.info("UUID: {} Value: {}".format(valueState.uuid, valueState.value))
                             
                             #Put it on queue to be sent to MQTT
                             await qOut.put(QMessage("miniserver", loxUuid = valueState.uuid, loxValue = valueState.value)) #Put the Message on the Queue
 
                     elif header.msg_type == 'textStateTab':
-                        await loxMessages.LoxTextState.parseTable(await myWs.recv())
-                        for textState in loxMessages.LoxTextState.instances:
+                        textStates = await loxMessages.LoxTextState.parseTable(await myWs.recv())
+                        for textState in textStates:
                             logging.info("UUID: {}, UUID icon: {}, TextLength: {}, Text: {}".format(textState.uuid, textState.uuid_icon, textState.textLength, textState.text))
-                            
+                             
+                             #Put it on queue to be sent to MQTT
+                            await qOut.put(QMessage("miniserver", loxUuid = textState.uuid, loxValue = textState.text)) #Put the Message on the Queue
+    
                     elif header.msg_type == 'text':
                         message = await myWs.recv()
                         logging.info("Textmessage received: {}".format(message))

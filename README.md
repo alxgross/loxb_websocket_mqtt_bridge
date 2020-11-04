@@ -23,7 +23,13 @@ It subscribes on:
     
     
 ## Dependencies
-    Packages necessary to be installed
+
+Developed on Python 3.7.7
+
+Packages necessary to be installed
     aiofile
     requests
+    attr
+    gmqtt
+    websockets
     
