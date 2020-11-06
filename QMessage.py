@@ -51,6 +51,11 @@ class QMessage:
         self.mqttPayload = self.loxValue
         logging.debug("MQTT Payload set: {}".format(self.mqttPayload))
         
+        
+    def computeLoxCommand(self):
+        uuidFound = "12c3ac9b-00fa-1235-ffff7ba5fa36c093"
+        value: str = self.mqttPayload
+        self.loxCommand = "jdev/sps/io/{}/{}".format(uuidFound, value)
     
     def __init__(self, origin: str, loxDict: dict = {}, loxUuid: str = "", loxValue: str = "", loxCommand: str = "", mqttTopic: str = "", mqttPayload: str = ""):
         self.origin = origin
@@ -68,6 +73,7 @@ class QMessage:
         if mqttTopic:
             self.mqttTopic = mqttTopic
             self.mqttPayload = mqttPayload
+            self.computeLoxCommand()
         
     
     #Steps to be done
