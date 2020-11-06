@@ -46,7 +46,7 @@ class LoxMiniserver:
         
         #check if Key is in cache
         try:
-            with open('.cache/rsa_pub_key.pem', 'rb') as file:
+            with open('.cache/rsa_pub_key.pem', 'r') as file:
                 self.rsa_pub_key: str = file.read()
                 logging.info("RSA Public Key read from cache and set for Instance: {}".format(self.rsa_pub_key))
 
@@ -58,19 +58,28 @@ class LoxMiniserver:
                 response.raise_for_status()
             except ConnectionError as exc: #https://docs.python.org/3/library/exceptions.html#exception-hierarchy
                 logging.error("Some issue with your network. Probably not possible to reach Miniserver.")
-                logging.error(exc) #prints exception infos   
+                logging.error(exc) #prints exception infos
+                raise
             except:
                 logging.error("Could not get RSA public key via /jdev/sys/getPublicKey for some unknown reason.")
                 raise
                 
-            else:
+            else: #run if NO exception was encountered
                 rsa_key_malformed = response.json()["LL"]["value"]
                 #fix the malformed public key
                 rsa_key_malformed = rsa_key_malformed.replace("-----BEGIN CERTIFICATE-----", "-----BEGIN PUBLIC KEY-----\n")
-                self.rsa_pub_key = rsa_key_malformed.replace("-----END CERTIFICATE-----", "\n-----END PUBLIC KEY-----")
+                self.rsa_pub_key: str = rsa_key_malformed.replace("-----END CERTIFICATE-----", "\n-----END PUBLIC KEY-----")
                 logging.info("RSA Public Key retrieved from Miniserver and set for Instance: {}".format(self.rsa_pub_key))
-
-    
+                
+                try:
+                    with open('.cache/rsa_pub_key.pem', 'w') as file:
+                        file.write(self.rsa_pub_key)
+                        logging.info("RSA public key cached to file system")
+                    
+                except:
+                    logging.error("Could not write RSA pub key cache file")
+                    raise
+                    
     
     #get Sha1 Key and Salt
     def getSha1KeySalt(self):

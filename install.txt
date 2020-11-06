@@ -28,6 +28,9 @@ pip3 install python-dotenv
 
 pip3 install pyOpenSSL
 
+
+copy env-templ to .evn (or edit via page)
+
 ----
 
 secrets
