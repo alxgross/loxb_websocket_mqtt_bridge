@@ -16,7 +16,7 @@ env_lb = Env("MQTT_")
 
 # Setup logging
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.INFO,
     format="%(asctime)s,%(msecs)d %(levelname)s: %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -37,13 +37,15 @@ async def shutdown(signal, loop):
 def main():
     myLox = LoxMiniserver(env_lox.ip, env_lox.port, env_lox.user, env_lox.password, env_lox.client_uuid)
     loxBerry = LoxBerry(env_lb.broker_host, env_lb.broker_port, client_id = "alx_sender1", miniserver = env_lox.miniserver_name)
-    loxBerry_listen = LoxBerry(env_lb.broker_host, env_lb.broker_port, "alx_listener1", miniserver = env_lox.miniserver_name)
+    
     msgQ_lox2lb = asyncio.Queue() # Creates a FIFO queue for messages
     msgQ_lb2lox = asyncio.Queue() # Creates a FIFO queue for messages
 
 
     loop = asyncio.get_event_loop()
-
+    loop.set_debug(True)
+    loop.slow_callback_duration = 0.3 #300 ms Threshold before warning raised
+    
     #Preparing to gracefully exit
     # May want to catch other signals too
     #signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT) - POSIX/LINUX
@@ -57,8 +59,7 @@ def main():
         
         
     try:
-        loop.run_until_complete(loxBerry.connect())
-        loop.run_until_complete(loxBerry_listen.connect())
+        #loop.run_until_complete(loxBerry_listen.connect())
 
 #         # Start listener and heartbeat 
 #         tasks = [
@@ -69,8 +70,7 @@ def main():
 
    #     loop.run_until_complete(asyncio.wait(tasks))
         loop.create_task(myLox.plugWebsocket(msgQ_lox2lb, msgQ_lb2lox)) # Startup websocket connection and listen
-        loop.create_task(loxBerry.MQTTsender(msgQ_lox2lb))
-        loop.create_task(loxBerry_listen.MQTTreceiver(msgQ_lb2lox))
+        loop.create_task(loxBerry.connect(msgQ_lox2lb)) # Startup mqtt connection
         loop.run_forever()
 
     finally:

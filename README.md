@@ -30,6 +30,6 @@ Packages necessary to be installed
     aiofile
     requests
     attr
-    gmqtt
     websockets
-    
+    paho-mqtt
+    asyncio-mqtt

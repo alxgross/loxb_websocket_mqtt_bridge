@@ -68,7 +68,7 @@ class LoxMiniserver:
                 #fix the malformed public key
                 rsa_key_malformed = rsa_key_malformed.replace("-----BEGIN CERTIFICATE-----", "-----BEGIN PUBLIC KEY-----\n")
                 self.rsa_pub_key = rsa_key_malformed.replace("-----END CERTIFICATE-----", "\n-----END PUBLIC KEY-----")
-                logging.info("RSA Public Key set for Instance: {}".format(self.rsa_pub_key))
+                logging.info("RSA Public Key retrieved from Miniserver and set for Instance: {}".format(self.rsa_pub_key))
 
     
     
@@ -151,7 +151,7 @@ class LoxMiniserver:
         signature1 = digester.digest()
         
         signature2 = binascii.hexlify(signature1)    
-        logging.info("hmac-sha1 output: {}".format(signature2.decode()))
+        logging.debug("hmac-sha1 output: {}".format(signature2.decode()))
         #return a hex string
         return signature2.decode()
         
@@ -166,7 +166,7 @@ class LoxMiniserver:
         #Now encrypt the command with AES (page 21 step 1 & 2)
         encrypted_command = await self.aes_enc(to_encrypt)
         message_to_ws = "jdev/sys/enc/{}".format(encrypted_command) # page 21, step 3
-        logging.info("Message to be sent: {}".format(message_to_ws))
+        logging.debug("Message to be sent: {}".format(message_to_ws))
         
         return message_to_ws
         
@@ -179,7 +179,7 @@ class LoxMiniserver:
         #... read file ... /to be done
         # if not...
         getTokenCommand = "jdev/sys/getjwt/{}/{}/{}/{}/{}".format(await self.hashUserPw(self.user, self.password), self.user, self.permission, self.client_uuid, self.client_id)
-        logging.info("GetToken Command built: {}".format(getTokenCommand))
+        logging.debug("GetToken Command built: {}".format(getTokenCommand))
         return getTokenCommand
     
 
@@ -196,7 +196,7 @@ class LoxMiniserver:
                 #Send Session Key (page 8, step 7)
                 await myWs.send("jdev/sys/keyexchange/{}".format(self.sessionkey))
                 lox_header = loxMessages.LoxHeader(await myWs.recv())
-                logging.info("Received Loxone Header Type: {}".format(lox_header.msg_type))
+                logging.debug("Received Loxone Header Type: {}".format(lox_header.msg_type))
                 if lox_header.msg_type != "text":
                     logging.error("Answer from Miniserver not expected: should be text-header")
                     raise ConnectionAbortedError("We stop here as the keyexchange failed already")
@@ -204,7 +204,7 @@ class LoxMiniserver:
                 if response["LL"]["Code"] == "200":
                     logging.info("Keyexchange successful")
                 else:
-                    logging.info("Keyexchange failed with Code :{}".format(response["LL"]["Code"]))
+                    logging.error("Keyexchange failed with Code :{}".format(response["LL"]["Code"]))
 
 
                 #Get token (as encrypted command)
@@ -215,7 +215,7 @@ class LoxMiniserver:
                     logging.error("Answer from Miniserver not expected: should be text-header")
                     raise ConnectionAbortedError("We stop here as the getToken failed already")
                 response = json.loads(await myWs.recv())
-                logging.info("Answer to getToken: {}".format(response))
+                logging.debug("Answer to getToken: {}".format(response))
                 
                 #EERROR handling missing
                 
@@ -251,6 +251,8 @@ class LoxMiniserver:
                         async with AIOFile(".cache/loxApp3.json", "w") as file:
                             await file.write(json.dumps(structure_file, indent=4))
                             await file.fsync()
+                            logging.info("Structure file cached to filesystem.")
+                            
                     except FileNotFoundError as exc:
                         logging.error("Error with caching the structure file")
                         raise
@@ -296,18 +298,18 @@ class LoxMiniserver:
                         valueStates = await loxMessages.LoxValueState.parseTable(message)
                     
                         for valueState in valueStates:
-                            logging.info("UUID: {} Value: {}".format(valueState.uuid, valueState.value))
+                            logging.debug("UUID: {} Value: {}".format(valueState.uuid, valueState.value))
                             
                             #Put it on queue to be sent to MQTT
-                            await qOut.put(QMessage("miniserver", loxUuid = valueState.uuid, loxValue = valueState.value)) #Put the Message on the Queue
+                            await qOut.put(QMessage("miniserver", loxDict = structure_file, loxUuid = valueState.uuid, loxValue = valueState.value)) #Put the Message on the Queue
 
                     elif header.msg_type == 'textStateTab':
                         textStates = await loxMessages.LoxTextState.parseTable(await myWs.recv())
                         for textState in textStates:
-                            logging.info("UUID: {}, UUID icon: {}, TextLength: {}, Text: {}".format(textState.uuid, textState.uuid_icon, textState.textLength, textState.text))
+                            logging.debug("UUID: {}, UUID icon: {}, TextLength: {}, Text: {}".format(textState.uuid, textState.uuid_icon, textState.textLength, textState.text))
                              
-                             #Put it on queue to be sent to MQTT
-                            await qOut.put(QMessage("miniserver", loxUuid = textState.uuid, loxValue = textState.text)) #Put the Message on the Queue
+                            #Put it on queue to be sent to MQTT
+                            await qOut.put(QMessage("miniserver", loxDict = structure_file, loxUuid = textState.uuid, loxValue = textState.text)) #Put the Message on the Queue
     
                     elif header.msg_type == 'text':
                         message = await myWs.recv()
@@ -315,7 +317,7 @@ class LoxMiniserver:
                     
                 
                     else:
-                        logging.info("Unknown Miniserver Message received: {}".format(await myWs.recv()))
+                        logging.error("Unknown Miniserver Message received: {}".format(await myWs.recv()))
             
             
     

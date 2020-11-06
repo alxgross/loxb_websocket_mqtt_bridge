@@ -1,3 +1,5 @@
+import logging
+
 class QMessage:
     """ QMessage shall include the data structure to interchange between the Miniserver Connection
         and the MQTT Instance
@@ -5,43 +7,72 @@ class QMessage:
     Instance Attributes
     
     origin (miniserver, this_bridge or mqtt)
-    appliance: unique identifier
-    value: set after translation
     
+    loxDict: Structure file - necessary infos to translate
+    loxUuid: UUID in state-table
+    loxValue: Value out of State-Table
+    loxCommand: a command that should be sent to Miniserver
+       
     mqttTopic (Sensor/Actuator)
-    mqttPayloadd
+    mqttPayload
+    mqttDict : dictionary defining the rules 
     
-    loxCommand: The Loxone Command
     
     """
     
-    def __init__(self, origin: str, loxUuid: str = "", loxCommand: str = "", loxValue: str = "", mqttTopic: str = "miniservers", mqttPayload: str = ""):
+    #prepare the MQTT telegram accordingly
+    def computeMqtt(self):
+        
+        #Compute for sensible controls - global states etc... maybe later...
+        
+        server_serial = self.loxDict["msInfo"]["serialNr"]
+        
+        try:
+        
+            # Get name and links to cat and room for control
+            control_uuid = self.loxUuid
+            control_name = self.loxDict["controls"][control_uuid]["name"]
+            room_uuid = self.loxDict["controls"][control_uuid]["room"]
+            cat_uuid = self.loxDict["controls"][control_uuid]["cat"]
+            room_name = self.loxDict["rooms"][room_uuid]["name"]
+            cat_name = self.loxDict["cats"][cat_uuid]["name"]
+            
+            #build the topic
+            # structure miniservers/<miniserver-serial>/<room>/<category>/<name>/<uuid>
+            self.mqttTopic = "miniservers/{}/{}/{}/{}/{}".format(server_serial, room_name, cat_name, control_name, control_uuid)
+            logging.debug("MQTT Topic computed: {}".format(self.mqttTopic))
+        
+        except KeyError as exc:
+            logging.debug("Not possible to compute MQTT for uuid {}. Error: {}".format(self.loxUuid, exc))
+            self.mqttTopic = "miniservers/{}/not_mapped/{}".format(server_serial, self.loxUuid)
+
+
+        #build the payload
+        self.mqttPayload = self.loxValue
+        logging.debug("MQTT Payload set: {}".format(self.mqttPayload))
+        
+    
+    def __init__(self, origin: str, loxDict: dict = {}, loxUuid: str = "", loxValue: str = "", loxCommand: str = "", mqttTopic: str = "", mqttPayload: str = ""):
         self.origin = origin
-        self.appliance = loxUuid
         
-        self.loxCommand = loxCommand
-        #Logic is missing yet
-        if loxValue == False:
-            self.value = mqttPayload
-        else:
-            self.value = loxValue
+        QMessage.loxDict = loxDict #set as a class attribute, awailable to any instance
         
-        self.mqttTopic = mqttTopic
-        self.mqttPayload = mqttPayload
+        if loxUuid:
+            self.loxUuid = loxUuid
+            self.loxValue = loxValue
+            self.computeMqtt()
+            
+        if loxCommand:
+            self.loxCommand = loxCommand
         
+        if mqttTopic:
+            self.mqttTopic = mqttTopic
+            self.mqttPayload = mqttPayload
+        
+    
     #Steps to be done
         #identify what value type it is
         # translate
         # use structure file to get more infos
         
-    #Get the Structure file from Miniserver with all the descriptions
-#     @classmethod
-#     async def getStructureFile(cls):
-#         #Get the structure file from the Miniserver (page 18)
-#         command = "data/LoxAPP3.json"
-#         header = LoxHeader(await myWs.recv())
-#         print(header.msg_type)
-#         #print("Structure File: ", json.dumps(structure_file))
-#         print(await myWs.recv())
-#         structure_file = await myWs.recv()
-#         struct_dict = json.loads(structure_file)
+

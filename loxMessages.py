@@ -136,10 +136,10 @@ class LoxTextState(LoxState):
         
     def decode(self, message) -> int:
         # return length of the message decoded
-        logging.debug("Message length: {}, Message: {}".format(len(message), message))
+        #logging.debug("Message length: {}, Message: {}".format(len(message), message))
         
         while len(message) < 36:
-            logging.warning("Message too short: {} bytes actually, padding out with 0x00".format(len(message)))
+            logging.debug("Message too short: {} bytes actually, padding out with 0x00".format(len(message)))
             message += b"\x00"
             
          # extract UUID
@@ -183,15 +183,15 @@ class LoxTextState(LoxState):
         pos = 0
         i = 0
         while pos < totalLength:
-            logging.debug("Processing message part {}".format(i))
+            #logging.debug("Processing message part {}".format(i))
             textState = cls(eventTable[pos:])
             instances.append( textState )
-            logging.debug("Text State: UUID: {}, UUID-Icon: {}, Text-Length: {}, Text: {}".format( textState.uuid, textState.uuid_icon, textState.textLength, textState.text ))
+            #logging.debug("Text State: UUID: {}, UUID-Icon: {}, Text-Length: {}, Text: {}".format( textState.uuid, textState.uuid_icon, textState.textLength, textState.text ))
             
             i += 1
             pos += textState.msgLength
                 
-        logging.debug("Received {} State-Text-Messages in a table".format(i))
+        logging.debug("Received {} State-Text-Messages in a table. Created {} instances.".format(i, len(instances)))
         return instances
 
                                            
