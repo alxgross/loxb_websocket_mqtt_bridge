@@ -1,0 +1,39 @@
+# Scripting python environment setup
+
+su -
+
+apt-get install python3-dev
+maybe (apt-get install libssl-devel)
+
+pip3 install --upgrade pip
+
+pip3 install setuptools
+pip3 install wheel
+
+pip3 install asyncio
+pip3 install requests
+pip3 install websockets
+
+
+pip3 install paho-mqtt
+pip3 install asyncio-mqtt
+
+pip3 install aiofile
+
+pip3 install pyCryptoDome
+pip3 install pyaes
+
+pip3 install bitstring
+pip3 install python-dotenv
+
+pip3 install pyOpenSSL
+
+----
+
+secrets
+
+base64 - ??
+binascii
+json
+hashlib -- ??
+hmac
